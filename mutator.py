@@ -24,17 +24,17 @@ tokens, parents, root = js_tokenizer.tokenize_code(path=path)
 
 # find mutants
 m = mutator.Mutator()
-mutants = m.find_mutants(tokens, root)
+mutant_code = m.find_mutants(tokens, root)
 
 # get initial code
-print(mutator.get_initial(mutants))
+print(mutant_code.get_initial())
 
 # random mutation of code with the same UAST
-print(mutator.get_sample(mutants))
+print(mutant_code.get_sample())
 
 # measure score
-print(mutator.measure_distance(path=path, code_a=mutator.get_initial(mutants),
-                               code_b=mutator.get_sample(mutants), return_seq=False))
+print(mutator.measure_distance(path=path, code_a=mutant_code.get_initial(),
+                               code_b=mutant_code.get_sample(), return_seq=False))
 ```
 """
 import difflib
@@ -297,6 +297,45 @@ def populate_mutants(mutant_node: Union[IndentationNode, NoopNode, str], n_trial
         mutants = new_mutants
 
 
+class MutantCode:
+    """Class to keep mutant nodes and functionality to generate samples."""
+    def __init__(self, mutant_tokens, root, parents, path):
+        self.mutant_tokens_ = mutant_tokens
+        self.root_ = root
+        self.parents_ = parents
+        self.path = path
+
+    @property
+    def mutant_tokens(self):
+        return self.mutant_tokens_
+
+    @mutant_tokens.setter
+    def mutant_tokens(self, tokens):
+        self.mutant_tokens_ = tokens
+
+    @property
+    def root(self):
+        return self.root_
+
+    @root.setter
+    def root(self, uast):
+        self.root_ = uast
+
+    @property
+    def parents(self):
+        return self.parents_
+
+    @parents.setter
+    def parents(self, new_parents):
+        self.parents_ = new_parents
+
+    def get_sample(self):
+        return get_sample(self.mutant_tokens)
+
+    def get_initial(self):
+        return get_initial(self.mutant_tokens)
+
+
 class Mutator:
     """Mutator of content with preserving the same (U)AST structure."""
     def __init__(self, n_trials: int = 4, max_rep: int = 2, max_ins: int = 2,
@@ -317,11 +356,12 @@ class Mutator:
         self.bblfsh_address = bblfsh_address
         self.client = bblfsh.BblfshClient(endpoint=bblfsh_address)
 
-    def find_mutants(self, tokens, root):
+    def find_mutants(self, tokens, parents, root):
         """
         This function should check several available mutations for each NoopNode & IndentationNode.
         As result it will give list
         :param tokens: list of tokens after `CodeTokenizer.tokenize_code`.
+        :param parents: parent for each UAST nodes.
         :param root: root of UAST.
         :return: list of tokens where `IndentationNode`s & `NoopNode`s are replaced with
                  MutationNode.
@@ -360,7 +400,7 @@ class Mutator:
                         new_tokens[ind].add_mutant(mutant)
                     if len(new_tokens[ind].mutants) >= self.max_mutants:
                         break
-        return new_tokens
+        return MutantCode(mutant_tokens=new_tokens, root=root, parents=parents, path=path)
 
 
 def get_sample(mutant_tokens):
