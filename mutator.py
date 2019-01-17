@@ -40,7 +40,7 @@ print(mutator.measure_distance(path=path, code_a=mutant_code.get_initial(),
 import difflib
 from itertools import islice
 import random
-from typing import Iterator, List, Union
+from typing import Iterator, Optional, List, Sequence, Union
 
 import bblfsh
 import numpy
@@ -56,6 +56,9 @@ STRING_ID = bblfsh.role_id(LITERAL_STR[1])
 
 
 def is_indentation(node: VirtualNode):
+    """
+    Check if input node is indentation.
+    """
     for ch in node.value:
         if ch not in INDENTATIOS:
             return False
@@ -63,13 +66,19 @@ def is_indentation(node: VirtualNode):
 
 
 def is_literal_string(token):
+    """
+    Check if token is literal string.
+    """
     if token.node is None:
         return False
     return LITERAL_ID in token.node.roles and STRING_ID in token.node.roles
 
 
 class IndentationNode(VirtualNode):
+    """Indendation node and related functionality."""
+
     def __init__(self, node: VirtualNode):
+        """Construct IndentationNode given VirtualNode."""
         err = "Node should contain only indentation characters. Got '%s'"
         assert is_indentation(node), err % node.value
         self.value = node.value
@@ -98,6 +107,8 @@ class IndentationNode(VirtualNode):
 
 
 class NoopNode(VirtualNode):
+    """Node to represent empty space."""
+
     def __repr__(self) -> str:
         return ("NoopNode(\"%s\", start=%s, end=%s, node=%s, path=\"%s\")" % (
                     self.value.replace("\n", "\\n").replace("\t", "\\t"),
@@ -159,7 +170,8 @@ def merge_indentation(tokens: List[VirtualNode]) -> \
 def insert_noop(tokens: List[Union[VirtualNode, IndentationNode]]) -> \
         Union[VirtualNode, IndentationNode, NoopNode]:
     """
-    Find places and insert NoopNode. Insertion should be done between
+    Find places and insert NoopNode.
+
     :param tokens: list of tokens.
     :return: list of tokens extended by NoopNodes.
     """
@@ -193,32 +205,46 @@ def insert_noop(tokens: List[Union[VirtualNode, IndentationNode]]) -> \
 
 class MutantNode:
     """Class to store initial state of node and available mutations."""
-    def __init__(self, initial_val: Union[IndentationNode, NoopNode]):
-        self.initial_val_ = initial_val
-        self.mutants_ = set([initial_val])  # initially only this option is available
+
+    def __init__(self, token: Union[IndentationNode, NoopNode]):
+        """Create MutantNode given IndentationNode or NoopNode."""
+        self.initial_token_ = token
+        self.start = token.start
+        self.end = token.end
+        self.initial_val_ = token.value
+        self.mutants_ = set([self.initial_val_])  # initially only this option is available
+
+    @property
+    def initial_token(self):
+        """Return initial token where `type(token) in [IndentationNode, NoopNode]`."""
+        return self.initial_token_
 
     @property
     def initial_val(self):
+        """Return initial value of mutant node."""
         return self.initial_val_
 
     @property
     def mutants(self, ):
+        """Return available mutants."""
         return self.mutants_
 
     def add_mutant(self, mut):
+        """Add new mutant."""
         self.mutants_.add(mut)
 
     @property
     def value(self):
-        # return random sample from mutants
+        """Return random sample from mutants."""
         return random.sample(self.mutants_, 1)[0]
 
 
 def populate_mutants_(mutant_node: Union[IndentationNode, NoopNode, str], n_trials: int = 4,
-                      max_rep: int = 3, max_ins: int = 3, enforce_empty: bool = True) -> \
+                      max_rep: int = 2, max_ins: int = 2, enforce_empty: bool = True) -> \
         Iterator[str]:
     """
-    Function to randomly populate mutants given node to mutate.
+    Introduce several modifications into mutant_node and yield result.
+
     1) yield "" if it's not NoopNode
     2) introduce 'small' mutations
     while n < n_trials:
@@ -275,7 +301,8 @@ def populate_mutants_(mutant_node: Union[IndentationNode, NoopNode, str], n_tria
 def populate_mutants(mutant_node: Union[IndentationNode, NoopNode, str], n_trials: int = 4,
                      max_rep: int = 3, max_ins: int = 3, depth: int = 2) -> Iterator[str]:
     """
-    Function to populate mutants given node to mutate.
+    Introduce several modifications into mutant_node and yield result.
+
     Ex: `depth = 2` means: take first level mutants, yield them and generate new mutants from them.
 
     :param mutant_node: node that should be mutated.
@@ -285,7 +312,6 @@ def populate_mutants(mutant_node: Union[IndentationNode, NoopNode, str], n_trial
     :param depth: depth of mutant generation.
     :yield mutants one by one.
     """
-    # TODO: find elegant way to make depth a parameter
     mutants = [mutant_node]
     for _ in range(depth):
         new_mutants = []
@@ -299,7 +325,9 @@ def populate_mutants(mutant_node: Union[IndentationNode, NoopNode, str], n_trial
 
 class MutantCode:
     """Class to keep mutant nodes and functionality to generate samples."""
+
     def __init__(self, mutant_tokens, root, parents, path):
+        """Initialize MutantCode."""
         self.mutant_tokens_ = mutant_tokens
         self.root_ = root
         self.parents_ = parents
@@ -307,37 +335,55 @@ class MutantCode:
 
     @property
     def mutant_tokens(self):
+        """Return mutant tokens."""
         return self.mutant_tokens_
 
     @mutant_tokens.setter
     def mutant_tokens(self, tokens):
+        """Set mutant tokens."""
         self.mutant_tokens_ = tokens
 
     @property
     def root(self):
+        """Return root."""
         return self.root_
 
     @root.setter
     def root(self, uast):
+        """Set root."""
         self.root_ = uast
 
     @property
     def parents(self):
+        """Return parents."""
         return self.parents_
 
     @parents.setter
     def parents(self, new_parents):
+        """Set new parents."""
         self.parents_ = new_parents
 
-    def get_sample(self):
-        return get_sample(self.mutant_tokens)
+    def get_sample(self, start_pos: Optional[int] = None, end_pos: Optional[int] = None) \
+            -> (str, int, int):
+        """
+        Generate sample with mutants that have start offset in range initial_code[start:end].
+
+        :param mutant_tokens: Sequence of tokens, including MutantNode.
+        :param start_pos: Start offset to generate mutants. If is not provided - beginning of file.
+        :param end_pos: End offset to generate mutants. If is not provided - end of file.
+        :return: (new code, start position of mutants in a new code, end position of mutants in a
+                 new code)
+        """
+        return get_sample(self.mutant_tokens, start_pos=start_pos, end_pos=end_pos)
 
     def get_initial(self):
+        """Get initial state of mutant node."""
         return get_initial(self.mutant_tokens)
 
 
 class Mutator:
     """Mutator of content with preserving the same (U)AST structure."""
+
     def __init__(self, n_trials: int = 4, max_rep: int = 2, max_ins: int = 2,
                  max_mutants: int = 10, bblfsh_address: str = "0.0.0.0:9432"):
         """
@@ -358,7 +404,8 @@ class Mutator:
 
     def find_mutants(self, tokens, parents, root):
         """
-        This function should check several available mutations for each NoopNode & IndentationNode.
+        Find several available non-UAST breakable mutations for each NoopNode & IndentationNode.
+
         As result it will give list
         :param tokens: list of tokens after `CodeTokenizer.tokenize_code`.
         :param parents: parent for each UAST nodes.
@@ -383,7 +430,7 @@ class Mutator:
                     if mutant in new_tokens[ind].mutants:
                         # duplicated mutant - skip
                         continue
-                    # TODO: check uast
+
                     new_content = []
                     for i, t in enumerate(new_tokens):
                         if i == ind:
@@ -393,6 +440,7 @@ class Mutator:
                                 new_content.append(t.initial_val)
                             else:
                                 new_content.append(t.value)
+                    # check that UAST wasn't changed
                     new_content = "".join(new_content)
                     new_root = self.client.parse(filename=path,
                                                  contents=new_content.encode("utf-8")).uast
@@ -403,11 +451,46 @@ class Mutator:
         return MutantCode(mutant_tokens=new_tokens, root=root, parents=parents, path=path)
 
 
-def get_sample(mutant_tokens):
-    return "".join(t.value for t in mutant_tokens)
+def get_sample(mutant_tokens: Sequence[Union[VirtualNode, MutantNode]],
+               start_pos: Optional[int] = None, end_pos: Optional[int] = None) -> (str, int, int):
+    """
+    Generate mutant sample with mutants that have start offset in range initial_code[start:end].
+
+    :param mutant_tokens: Sequence of tokens, including MutantNode.
+    :param start_pos: Start offset to generate mutants. If is not provided - beginning of file.
+    :param end_pos: End offset to generate mutants. If is not provided - end of file.
+    :return: (new code, start position of mutants in new code, end position of mutants in new code)
+    """
+    if start_pos is None and end_pos is None:
+        res = "".join(t.value for t in mutant_tokens)
+        return res, 0, len(res)
+
+    full_len = sum(t.value if not isinstance(t, MutantNode) else t.initial_val
+                   for t in mutant_tokens)
+
+    # start & end lists should be without mutations - mutations only in middle list
+    start, middle, end = [], [], []
+    if start_pos is None:
+        start_pos = 0
+    if end_pos is None:
+        end_pos = full_len
+    for token in mutant_tokens:
+        if token.start.offset < start_pos:
+            start.append(token)
+        elif token.start.offset >= end_pos:
+            end.append(token)
+        elif start_pos <= token.start.offset < end_pos:
+            middle.append(token)
+
+    start = [t.value if not isinstance(t, MutantNode) else t.initial_val for t in start]
+    middle = [t.value for t in middle]
+    end = [t.value if not isinstance(t, MutantNode) else t.initial_val for t in end]
+    res = "".join(start + middle + end)
+    return res, start_pos, len(res) - (full_len - end_pos)
 
 
 def get_initial(mutant_tokens):
+    """Return initial representation of mutant token."""
     return "".join(t.value if not isinstance(t, MutantNode) else t.initial_val
                    for t in mutant_tokens)
 
@@ -416,6 +499,7 @@ def measure_distance(path: str, code_a: Union[str, bytes], code_b: Union[str, by
                      return_seq: bool = True) -> Union[List[float], float]:
     """
     Measure distance between 2 pieces of code.
+
     Algorithm
     1) tokenize -> merge_indentation -> insert_noop
     2) iterate over 2 list of tokens and measure common ratio between them (if only one of them is

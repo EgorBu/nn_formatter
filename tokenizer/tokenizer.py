@@ -9,6 +9,10 @@ from tokenizer.virtual_node import Position, VirtualNode
 
 
 class CodeTokenizer:
+    """
+    Tokenizer for source - create concrete syntax tree in some kind of sense.
+    """
+
     def __init__(self, language: str = "javascript", bblfsh_address: str = "0.0.0.0:9432"):
         """
         Construct a `CodeTokenizer`.
