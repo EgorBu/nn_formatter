@@ -33,8 +33,8 @@ print(mutant_code.get_initial())
 print(mutant_code.get_sample())
 
 # measure score
-print(mutator.measure_distance(path=path, code_a=mutant_code.get_initial(),
-                               code_b=mutant_code.get_sample(), return_seq=False))
+print(mutator.measure_score(path=path, code_a=mutant_code.get_initial(),
+                            code_b=mutant_code.get_sample(), return_seq=False))
 ```
 """
 import difflib
@@ -50,9 +50,8 @@ from tokenizer.virtual_node import Position, VirtualNode
 
 INDENTATIOS = (" ", "\n", "\t")
 QUOTES = ("'", '"')
-LITERAL_STR = ("LITERAL", "STRING")
-LITERAL_ID = bblfsh.role_id(LITERAL_STR[0])
-STRING_ID = bblfsh.role_id(LITERAL_STR[1])
+LITERAL_ID = bblfsh.role_id("LITERAL")
+STRING_ID = bblfsh.role_id("STRING")
 
 
 def is_indentation(node: VirtualNode):
@@ -495,10 +494,10 @@ def get_initial(mutant_tokens):
                    for t in mutant_tokens)
 
 
-def measure_distance(path: str, code_a: Union[str, bytes], code_b: Union[str, bytes],
-                     return_seq: bool = True) -> Union[List[float], float]:
+def measure_score(path: str, code_a: Union[str, bytes], code_b: Union[str, bytes],
+                  return_seq: bool = True) -> Union[List[float], float]:
     """
-    Measure distance between 2 pieces of code.
+    Measure similarity score between 2 pieces of code.
 
     Algorithm
     1) tokenize -> merge_indentation -> insert_noop
